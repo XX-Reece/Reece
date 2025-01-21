@@ -46,11 +46,7 @@ We standardized naming conventions for columns to prevent conflicts and ensure c
 
 3_ Handling Missing Values
 
-Missing data points (e.g., blank price fields, null coordinates) were identified using Pandas’ isnull() function and SQL WHERE ... IS NULL queries.
-Based on the nature of each field, we either:
-Filled them with median or mean values (for numerical fields),
-Imputed them with placeholders (for categorical fields), or
-Excluded rows with excessive null values if they were unfit for analysis.
+Missing data points (e.g., blank price fields, null coordinates) were identified 
 
 4- Removing Duplicates
 
@@ -238,4 +234,458 @@ SELECT [Listings_id], [Neighbourhood], [Price], [Bedrooms_number],
 FROM [Abiodun airbnb].[dbo].[airbnb]
 WHERE [Bedrooms_number] > 2
 ORDER BY [Price] DESC;
+```
+-- Listings by Neighbourhood Group and Property Type
+```sql
+SELECT 
+    c.[neighbourhood_group], 
+    a.[Property_type], 
+    COUNT(a.[Listings_id]) AS TotalListings
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+GROUP BY 
+    c.[neighbourhood_group], a.[Property_type]
+ORDER BY 
+    c.[neighbourhood_group], TotalListings DESC;
+```
+-- Identify Neighbourhood Groups with the Most Superhosts
+```sql
+SELECT 
+    c.[neighbourhood_group], 
+    COUNT(a.[Listings_id]) AS SuperhostListings
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+WHERE 
+    a.[Host_is_superhost] = 't'
+GROUP BY 
+    c.[neighbourhood_group]
+ORDER BY 
+    SuperhostListings DESC;
+```
+-- Median Price Deviation in Each Neighbourhood Group
+```sql
+SELECT 
+    c.[neighbourhood_group], 
+    b.[price_median], 
+    b.[price_median_abs_deviation]
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] b
+ON 
+    a.[Neighbourhood] = b.[neighbourhood_mode]
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+GROUP BY 
+    c.[neighbourhood_group], b.[price_median], b.[price_median_abs_deviation]
+ORDER BY 
+    b.[price_median] DESC;
+```
+-- Listings with the Best Location Scores
+```sql
+SELECT 
+    a.[Listings_id], 
+    a.[Location_score], 
+    c.[neighbourhood_group], 
+    a.[Price]
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+WHERE 
+    a.[Location_score] >= 9
+ORDER BY 
+    a.[Location_score] DESC, a.[Price] ASC;
+```
+-- Host Activity Across Neighbourhood Groups
+```sql
+SELECT 
+    c.[neighbourhood_group], 
+    AVG(a.[Host_number_of_listings]) AS AvgListingsPerHost, 
+    COUNT(DISTINCT a.[Listings_id]) AS UniqueListings
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+GROUP BY 
+    c.[neighbourhood_group]
+ORDER BY 
+    AvgListingsPerHost DESC, UniqueListings DESC;
+```
+-- High Demand Areas: Listings with High Review Frequencies
+```sql
+SELECT 
+    a.[Listings_id], 
+    a.[Reviews_per_month], 
+    c.[neighbourhood_group]
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+WHERE 
+    a.[Reviews_per_month] > 3
+ORDER BY 
+    a.[Reviews_per_month] DESC;
+```
+-- Metrics for Cleanliness Score, Check-in Score, Location Score, Value of Money Score
+```sql
+SELECT 
+    c.[neighbourhood_group],
+    AVG(a.[Cleanliness_score]) AS AvgCleanlinessScore,
+    AVG(a.[Checkin_score]) AS AvgCheckinScore,
+    AVG(a.[Location_score]) AS AvgLocationScore,
+    AVG(a.[Value_for_money_score]) AS AvgValueForMoneyScore,
+    AVG(a.[Reviews_per_month]) AS AvgReviewsPerMonth
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+GROUP BY 
+    c.[neighbourhood_group]
+ORDER BY 
+    c.[neighbourhood_group];
+```
+-- Listings with the Highest Review Per Month
+```sql
+SELECT 
+    a.[Listings_id],
+    c.[neighbourhood_group],
+    a.[Cleanliness_score],
+    a.[Checkin_score],
+    a.[Location_score],
+    a.[Value_for_money_score],
+    a.[Reviews_per_month]
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+WHERE 
+    a.[Reviews_per_month] IS NOT NULL
+ORDER BY 
+    a.[Reviews_per_month] DESC;
+```
+-- Approximate Median Scores
+```sql
+WITH RankedScores AS (
+    SELECT 
+        c.[neighbourhood_group],
+        a.[Cleanliness_score],
+        a.[Checkin_score],
+        a.[Location_score],
+        a.[Value_for_money_score],
+        a.[Reviews_per_month],
+        ROW_NUMBER() OVER (PARTITION BY c.[neighbourhood_group] ORDER BY a.[Cleanliness_score]) AS CleanlinessRank,
+        ROW_NUMBER() OVER (PARTITION BY c.[neighbourhood_group] ORDER BY a.[Checkin_score]) AS CheckinRank,
+        ROW_NUMBER() OVER (PARTITION BY c.[neighbourhood_group] ORDER BY a.[Location_score]) AS LocationRank,
+        ROW_NUMBER() OVER (PARTITION BY c.[neighbourhood_group] ORDER BY a.[Value_for_money_score]) AS ValueRank,
+        ROW_NUMBER() OVER (PARTITION BY c.[neighbourhood_group] ORDER BY a.[Reviews_per_month]) AS ReviewsRank,
+        COUNT(*) OVER (PARTITION BY c.[neighbourhood_group]) AS TotalListings
+    FROM 
+        [Abiodun airbnb].[dbo].[airbnb] a
+    LEFT JOIN 
+        [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+    ON 
+        a.[Neighbourhood] = c.[neighbourhood]
+)
+SELECT 
+    neighbourhood_group,
+    AVG(CASE WHEN CleanlinessRank = (TotalListings + 1) / 2 THEN [Cleanliness_score] END) AS MedianCleanlinessScore,
+    AVG(CASE WHEN CheckinRank = (TotalListings + 1) / 2 THEN [Checkin_score] END) AS MedianCheckinScore,
+    AVG(CASE WHEN LocationRank = (TotalListings + 1) / 2 THEN [Location_score] END) AS MedianLocationScore,
+    AVG(CASE WHEN ValueRank = (TotalListings + 1) / 2 THEN [Value_for_money_score] END) AS MedianValueForMoneyScore,
+    AVG(CASE WHEN ReviewsRank = (TotalListings + 1) / 2 THEN [Reviews_per_month] END) AS MedianReviewsPerMonth
+FROM 
+    RankedScores
+GROUP BY 
+    neighbourhood_group
+ORDER BY 
+    neighbourhood_group;
+	 
+	 SELECT 
+    COUNT(*) AS TotalRows,
+    SUM(CASE WHEN Cleanliness_score IS NULL THEN 1 ELSE 0 END) AS MissingCleanlinessScore,
+    SUM(CASE WHEN Location_score IS NULL THEN 1 ELSE 0 END) AS MissingLocationScore,
+    SUM(CASE WHEN Checkin_score IS NULL THEN 1 ELSE 0 END) AS MissingCheckinScore,
+    SUM(CASE WHEN Value_for_money_score IS NULL THEN 1 ELSE 0 END) AS MissingValueScore,
+    SUM(CASE WHEN Reviews_per_month IS NULL THEN 1 ELSE 0 END) AS MissingReviews
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb];
+
+	SELECT 
+    [Listings_id], 
+    COUNT(*) AS DuplicateCount
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb]
+GROUP BY 
+    [Listings_id]
+HAVING 
+    COUNT(*) > 1;
+
+	SELECT 
+    MIN([Price]) AS MinPrice,
+    MAX([Price]) AS MaxPrice,
+    MIN([Reviews_per_month]) AS MinReviews,
+    MAX([Reviews_per_month]) AS MaxReviews
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb];
+
+	SELECT 
+    AVG([Cleanliness_score]) AS AvgCleanlinessScore,
+    AVG([Checkin_score]) AS AvgCheckinScore,
+    AVG([Location_score]) AS AvgLocationScore,
+    AVG([Value_for_money_score]) AS AvgValueForMoneyScore,
+    AVG([Price]) AS AvgPrice,
+    AVG([Reviews_per_month]) AS AvgReviews
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb];
+
+	WITH Stats AS (
+    SELECT 
+        AVG(Price) AS AvgPrice,
+        AVG(Location_score) AS AvgLocationScore,
+        STDEV(Price) AS StdDevPrice,
+        STDEV(Location_score) AS StdDevLocationScore
+    FROM 
+        [Abiodun airbnb].[dbo].[airbnb]
+),
+Deviation AS (
+    SELECT 
+        Price,
+        Location_score,
+        (Price - Stats.AvgPrice) AS PriceDeviation,
+        (Location_score - Stats.AvgLocationScore) AS LocationDeviation
+    FROM 
+        [Abiodun airbnb].[dbo].[airbnb], Stats
+),
+Covariance AS (
+    SELECT 
+        SUM(PriceDeviation * LocationDeviation) AS Covariance,
+        COUNT(*) AS N
+    FROM 
+        Deviation
+)
+SELECT 
+    (Covariance.Covariance / Covariance.N) / 
+    (Stats.StdDevPrice * Stats.StdDevLocationScore) AS CorrelationCoefficient
+FROM 
+    Covariance, Stats;
+
+	SELECT 
+    c.[neighbourhood_group],
+    AVG(a.[Cleanliness_score]) AS AvgCleanlinessScore,
+    AVG(a.[Location_score]) AS AvgLocationScore,
+    AVG(a.[Value_for_money_score]) AS AvgValueForMoneyScore
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+GROUP BY 
+    c.[neighbourhood_group]
+ORDER BY 
+    c.[neighbourhood_group];
+
+	SELECT 
+    c.[neighbourhood_group], 
+    AVG(a.[Reviews_per_month]) AS AvgReviewsPerMonth,
+    AVG(a.[Price]) AS AvgPrice
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb] a
+LEFT JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italy_city_neighbourhoods] c
+ON 
+    a.[Neighbourhood] = c.[neighbourhood]
+GROUP BY 
+    c.[neighbourhood_group]
+ORDER BY 
+    AvgReviewsPerMonth DESC;
+```
+-- Compare neighborhoods within cities for average prices and ratings
+```sql
+SELECT 
+    C.[place] AS city, 
+    N.[neighbourhood], 
+    AVG(N.[price_median]) AS avg_neighbourhood_price, 
+    AVG(N.[review_scores_rating_median]) AS avg_neighbourhood_rating,
+    AVG(C.[price_median]) AS avg_city_price, 
+    AVG(C.[review_scores_rating_median]) AS avg_city_rating
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] C
+JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped] N
+ON 
+    C.[place] = N.[place]
+GROUP BY 
+    C.[place], N.[neighbourhood]
+ORDER BY 
+    avg_neighbourhood_price DESC, avg_neighbourhood_rating DESC;
+```
+-- Analyze host diversity across cities and neighborhoods
+```sql
+SELECT 
+    C.[place] AS city, 
+    N.[neighbourhood], 
+    AVG(N.[host_total_listings_count_median]) AS avg_neighbourhood_hosts, 
+    AVG(C.[host_total_listings_count_median]) AS avg_city_hosts,
+    STDEV(N.[host_total_listings_count_median]) AS host_std_dev
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] C
+JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped] N
+ON 
+    C.[place] = N.[place]
+GROUP BY 
+    C.[place], N.[neighbourhood]
+ORDER BY 
+    avg_neighbourhood_hosts DESC;
+```
+-- Neighborhoods with the most diversity in room types
+```sql
+SELECT 
+    N.[neighbourhood], 
+    C.[place] AS city, 
+    N.[room_type_mode], 
+    N.[room_type_shannon_entropy] AS diversity_score
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped] N
+JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] C
+ON 
+    N.[place] = C.[place]
+WHERE 
+    N.[room_type_shannon_entropy] > (
+        SELECT AVG([room_type_shannon_entropy]) 
+        FROM [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped]
+    )
+ORDER BY 
+    diversity_score DESC;
+```
+-- Compare price variation between cities and neighborhoods
+```sql
+SELECT 
+    C.[place] AS city, 
+    N.[neighbourhood], 
+    C.[price_median] AS city_price_median, 
+    N.[price_median] AS neighbourhood_price_median, 
+    ABS(C.[price_median] - N.[price_median]) AS price_difference
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] C
+JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped] N
+ON 
+    C.[place] = N.[place]
+ORDER BY 
+    price_difference DESC;
+```
+-- Analyze price trends over time by city and neighborhood
+```sql
+SELECT 
+    C.[place] AS city, 
+    N.[neighbourhood], 
+    N.[period], 
+    AVG(N.[price_median]) AS avg_price, 
+    AVG(N.[reviews_per_month_median]) AS avg_reviews_per_month
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] C
+JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped] N
+ON 
+    C.[place] = N.[place]
+GROUP BY 
+    C.[place], N.[neighbourhood], N.[period]
+ORDER BY 
+    N.[period], avg_price DESC;
+```
+-- Compare geographic differences using latitude and longitude
+```sql
+SELECT 
+    N.[neighbourhood], 
+    C.[place] AS city, 
+    N.[latitude_median], 
+    N.[longitude_median], 
+    N.[price_median], 
+    N.[review_scores_rating_median]
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] C
+JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped] N
+ON 
+    C.[place] = N.[place]
+WHERE 
+    N.[latitude_median] > 43.0 AND N.[longitude_median] < 12.0
+ORDER BY 
+    N.[price_median] DESC;
+```
+-- Predict host activity using reviews per month
+```sql
+SELECT 
+    C.[place] AS city, 
+    N.[neighbourhood], 
+    N.[reviews_per_month_median], 
+    N.[host_total_listings_count_median],
+    (N.[reviews_per_month_median] * 0.8) + 10 AS predicted_host_count
+FROM 
+    [Abiodun airbnb].[dbo].[airbnb_italian_city_grouped] C
+JOIN 
+    [Abiodun airbnb].[dbo].[airbnb_italian_neighbourhood_grouped] N
+ON 
+    C.[place] = N.[place];
+```
+### Result/ Findings
+Overall Listing Insights
+
+Total Listings: The dataset contains several thousand Airbnb listings, covering a wide range of cities and neighborhoods across Italy.
+Average Price: The median nightly price was moderately high in major urban centers (e.g., Milan, Rome), while smaller towns tended to have lower average prices.
+City-Level Analysis
+
+Highest Median Price: Milan consistently showed the highest price_median in the airbnb_italian_city_grouped table, suggesting stronger demand or a more premium market.
+Review Trends: Cities like Florence and Venice exhibited comparatively higher monthly reviews, indicating robust tourism traffic.
+Neighborhood-Level Analysis
+
+Price Variation: Certain neighborhoods in Rome and Milan had significantly larger price deviations (based on price_median_abs_deviation), indicating a mix of both budget and luxury listings in the same areas.
+Diversity of Room Types: Neighborhoods with high room_type_shannon_entropy (e.g., central historic districts) showed a wider mix of entire homes, private rooms, and shared rooms.
+Host Activity
+
+Superhosts vs. Non-Superhosts: Queries revealed that superhosts generally maintain higher review_scores_rating_median and more consistent occupancy rates.
+Host Listings: Neighborhoods characterized by professional or commercial hosts (high host_total_listings_count_median) often had standardized pricing but slightly lower rating scores, possibly due to a more commercial experience.
+Reviews and Ratings
+
+Correlation with Price: A modest positive relationship between price_median and review_scores_rating_median was observed, suggesting that pricier listings often maintain slightly higher ratings, though exceptions exist.
+Review Volume: The reviews_per_month_median indicator was higher for coastal or tourist-centric neighborhoods, reflecting strong seasonal demand.
+Geospatial Findings
+
+Latitude/Longitude Clusters: By examining latitude_median and longitude_median, popular tourist areas (e.g., city centers near major landmarks) clustered with higher prices and review counts.
+Outliers: A few neighborhoods well outside central tourist zones displayed unexpectedly high prices, possibly indicating luxury villas or unique listings.
+Seasonality
+
+Time-Based Patterns: Aggregating data by period showed clear peaks in price_median and reviews_per_month_median during summer months, correlating with vacation season in many Italian destinations.
+Potential Opportunities
+
+Price Optimization: Hosts could consider dynamic pricing strategies in neighborhoods with large deviations in listing costs to remain competitive.
+Rating Improvement: Some neighborhoods with lower review_scores_rating_median might benefit from improved amenities or host responsiveness to attract more positive reviews.
+Data Quality Observations
+
+Missing Data: A small percentage of listings had incomplete information (e.g., missing coordinates or bathrooms). These were either imputed or excluded from certain analyses.
+Outliers: Extremely high-priced or unusually low-rated listings appeared in certain queries, warranting further investigation or potential data cleansing.
 
